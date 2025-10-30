@@ -1,0 +1,369 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isLecturer() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'lecturer';
+    }
+    
+    function isStudent() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if true; // Allow user creation during signup
+      allow update: if isOwner(userId) || isAdmin() || 
+                       // Allow updating earnings when transactions are created
+                       (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalEarnings', 'pendingWithdrawal']));
+      allow delete: if isAdmin();
+      
+    }
+
+    // Courses collection
+    match /courses/{courseId} {
+      allow read: if true; // Public can browse courses
+      allow create: if isLecturer();
+      allow update: if isAdmin() || 
+                       (isLecturer() && resource.data.lecturerId == request.auth.uid) ||
+                       // Allow updating revenue and student count when enrollments happen
+                       (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalRevenue', 'totalStudents', 'updatedAt']));
+      allow delete: if isAdmin() || 
+                       (isLecturer() && resource.data.lecturerId == request.auth.uid && resource.data.status == 'draft');
+      
+      match /lessons/{lessonId} {
+        allow read: if true;
+        // Simplified rule for development - any lecturer can create lessons
+        allow create: if isLecturer();
+        allow update: if isLecturer();
+        allow delete: if isAdmin() || isLecturer();
+        
+        // TODO: Re-enable strict ownership check after testing
+        // allow create: if isLecturer() && 
+        //                  get(/databases/$(database)/documents/courses/$(courseId)).data.lecturerId == request.auth.uid;
+      }
+    }
+
+    // Enrollments collection
+    match /enrollments/{enrollmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Any authenticated user can enroll
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.userId) || 
+        isAdmin() ||
+        (isLecturer() && resource.data.lecturerId == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Questions collection - Q&A System
+    match /questions/{questionId} {
+      allow read: if true; // Public can read questions for learning
+      allow create: if isAuthenticated(); // Any authenticated user can ask questions
+      allow update: if isAuthenticated() && (
+        // Question author can edit their question
+        isOwner(resource.data.authorId) ||
+        // Anyone can vote (handled in code with userVotes field)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'views', 'updatedAt']) ||
+        // Question author can mark answers as accepted
+        (isOwner(resource.data.authorId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acceptedAnswerId', 'isAnswered', 'updatedAt'])) ||
+        // Increment answer count when answers are added
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'updatedAt'])
+      );
+      allow delete: if isAdmin() || isOwner(resource.data.authorId);
+      
+      // Answers subcollection
+      match /answers/{answerId} {
+        allow read: if true; // Public can read answers
+        allow create: if isAuthenticated(); // Any authenticated user can answer
+        allow update: if isAuthenticated() && (
+          // Answer author can edit their answer
+          isOwner(resource.data.authorId) ||
+          // Anyone can vote on answers
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'updatedAt']) ||
+          // Question author can mark answer as accepted
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isAccepted', 'updatedAt'])
+        );
+        allow delete: if isAdmin() || isOwner(resource.data.authorId);
+        
+        // Replies subcollection (nested comments)
+        match /replies/{replyId} {
+          allow read: if true;
+          allow create: if isAuthenticated();
+          allow update: if isAuthenticated() && (
+            isOwner(resource.data.authorId) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'updatedAt'])
+          );
+          allow delete: if isAdmin() || isOwner(resource.data.authorId);
+        }
+      }
+    }
+
+    // Study Groups collection
+    match /studyGroups/{groupId} {
+      allow read: if true; // Public can browse study groups
+      allow create: if isAuthenticated(); // Any authenticated user can create groups
+      allow update: if isAuthenticated(); // Allow authenticated users to update (join/leave groups)
+      allow delete: if isAdmin() || isOwner(resource.data.organizerId);
+      
+      // Group discussions/posts
+      match /discussions/{discussionId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update: if isOwner(resource.data.authorId);
+        allow delete: if isAdmin() || 
+                         isOwner(resource.data.authorId) ||
+                         isOwner(get(/databases/$(database)/documents/studyGroups/$(groupId)).data.organizerId);
+      }
+      
+      // Group announcements
+      match /announcements/{announcementId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && 
+                         isOwner(get(/databases/$(database)/documents/studyGroups/$(groupId)).data.organizerId);
+        allow update: if isOwner(resource.data.authorId);
+        allow delete: if isAdmin() || isOwner(resource.data.authorId);
+      }
+    }
+
+    // Transactions collection
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(resource.data.userId) ||
+        (isLecturer() && resource.data.lecturerId == request.auth.uid)
+      );
+      allow list: if isAuthenticated() && (isAdmin() || isLecturer());
+      allow create: if isAuthenticated(); // Any authenticated user can create transactions
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Withdrawals collection
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAdmin() || isOwner(resource.data.lecturerId);
+      allow create: if isLecturer();
+      allow update: if isAdmin();
+    }
+
+    // Live Streams collection
+    match /liveStreams/{streamId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isLecturer();
+    }
+
+    // Reviews collection
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isStudent();
+      allow update: if isOwner(resource.data.userId) ||
+                       (isLecturer() && resource.data.courseId in 
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.courses);
+    }
+
+    // Discussion Forums collection
+    match /forums/{forumId} {
+      allow read: if true; // Public can read forum posts
+      allow create: if isAuthenticated(); // Any user can create forum posts
+      allow update: if isOwner(resource.data.authorId) ||
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'views', 'updatedAt']);
+      allow delete: if isAdmin() || isOwner(resource.data.authorId);
+      
+      // Forum replies
+      match /replies/{replyId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update: if isOwner(resource.data.authorId) ||
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'updatedAt']);
+        allow delete: if isAdmin() || isOwner(resource.data.authorId);
+      }
+    }
+
+    // User Progress/Achievements collection
+    match /userProgress/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId);
+      allow delete: if isAdmin();
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        // Support both userId and recipientId field names
+        isOwner(resource.data.userId) || 
+        isOwner(resource.data.recipientId) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated(); // System can create notifications
+      allow update: if isAuthenticated() && (
+        // User can mark as read - support both field names
+        isOwner(resource.data.userId) || 
+        isOwner(resource.data.recipientId) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isOwner(resource.data.userId) || 
+        isOwner(resource.data.recipientId) ||
+        isAdmin()
+      );
+      allow list: if isAuthenticated(); // Allow querying notifications
+    }
+
+    // Answers collection (top-level for direct access)
+    match /answers/{answerId} {
+      allow read: if true; // Public can read answers
+      allow create: if isAuthenticated(); // Any authenticated user can answer
+      allow update: if isAuthenticated() && (
+        // Answer author can edit their answer
+        isOwner(resource.data.authorId) ||
+        // Anyone can vote on answers
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'userVotes', 'updatedAt']) ||
+        // Question author can mark answer as accepted
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isAccepted', 'updatedAt']) ||
+        // Lecturers can moderate answers
+        isLecturer()
+      );
+      allow delete: if isAdmin() || isOwner(resource.data.authorId);
+    }
+
+    // Chat/Messages collection (for study groups or direct messages)
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow update: if isOwner(resource.data.senderId);
+        allow delete: if isAdmin() || isOwner(resource.data.senderId);
+      }
+    }
+
+    // Reports collection (for content moderation)
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated(); // Users can report content
+      allow update: if isAdmin(); // Only admins can update report status
+      allow delete: if isAdmin();
+    }
+
+    // Analytics collection (for platform insights)
+    match /analytics/{analyticsId} {
+      allow read: if isAdmin();
+      allow create: if true; // System can create analytics data
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Settings collection (for platform configuration)
+    match /settings/{settingId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Live Sessions collection
+    match /liveSessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Schedules collection
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderId || 
+        request.auth.uid == resource.data.receiverId
+      );
+      allow list: if isAuthenticated(); // Allow querying messages
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderId || 
+        request.auth.uid == resource.data.receiverId
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Announcements collection
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Coupons collection
+    match /coupons/{couponId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Promotions collection
+    match /promotions/{promotionId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Affiliate Links collection
+    match /affiliateLinks/{linkId} {
+      allow read: if isAuthenticated();
+      allow create: if isLecturer();
+      allow update: if (isLecturer() && resource.data.lecturerId == request.auth.uid) ||
+                       // Allow anyone to update click count and conversion tracking
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount', 'conversionCount', 'revenue', 'updatedAt']);
+      allow delete: if isAdmin() || (isLecturer() && resource.data.lecturerId == request.auth.uid);
+    }
+
+    // Affiliate Commissions collection
+    match /affiliateCommissions/{commissionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(resource.data.affiliateId) ||
+        isOwner(resource.data.studentId)
+      );
+      allow create: if isAuthenticated(); // System can create commissions
+      allow update: if isAdmin(); // Only admins can update commission status
+      allow delete: if isAdmin();
+    }
+
+    // Affiliate Payouts collection
+    match /affiliatePayouts/{payoutId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(resource.data.affiliateId)
+      );
+      allow create: if isAuthenticated() && isOwner(resource.data.affiliateId);
+      allow update: if isAdmin(); // Only admins can update payout status
+      allow delete: if isAdmin();
+    }
+  }
+}

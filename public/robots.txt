@@ -1,0 +1,24 @@
+# Robots.txt for NaijaEdu Platform
+User-agent: *
+Allow: /
+
+# Disallow admin and private areas
+Disallow: /admin/
+Disallow: /student/dashboard
+Disallow: /lecturer/dashboard
+Disallow: /api/
+Disallow: /_next/
+Disallow: /static/
+
+# Allow important pages
+Allow: /courses
+Allow: /about
+Allow: /contact
+Allow: /login
+Allow: /signup
+
+# Sitemap
+Sitemap: https://naijaedu.com/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1

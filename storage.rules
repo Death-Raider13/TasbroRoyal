@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /course-thumbnails/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                      request.resource.size < 5 * 1024 * 1024; // 5MB limit
+    }
+    
+    match /lesson-resources/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+                      request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+    
+    match /profile-photos/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
