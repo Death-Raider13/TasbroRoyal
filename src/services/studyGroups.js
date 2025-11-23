@@ -17,6 +17,7 @@ import {
 import { db } from './firebase';
 
 const COLLECTION_NAME = 'studyGroups';
+const IS_DEV = import.meta.env.DEV;
 
 // Mock data as fallback
 const MOCK_STUDY_GROUPS = [
@@ -150,17 +151,23 @@ export const getStudyGroups = async (filters = {}) => {
       });
     });
 
-    // If no groups found, return mock data as fallback
+    // If no groups found, return mock data as fallback (only in development)
     if (studyGroups.length === 0) {
-      console.log('No study groups found in Firebase, using mock data');
-      return MOCK_STUDY_GROUPS;
+      if (IS_DEV) {
+        console.log('No study groups found in Firebase, using mock data (development only)');
+        return MOCK_STUDY_GROUPS;
+      }
+      return [];
     }
 
     return studyGroups;
   } catch (error) {
     console.error('Error fetching study groups:', error);
-    console.log('Using mock data as fallback');
-    return MOCK_STUDY_GROUPS;
+    if (IS_DEV) {
+      console.log('Using mock data as fallback (development only)');
+      return MOCK_STUDY_GROUPS;
+    }
+    throw new Error('Failed to fetch study groups. Please try again later.');
   }
 };
 
@@ -179,19 +186,23 @@ export const getStudyGroup = async (groupId) => {
         updatedAt: data.updatedAt?.toDate() || new Date()
       };
     } else {
-      // Try to find in mock data
-      const mockGroup = MOCK_STUDY_GROUPS.find(g => g.id === groupId);
-      if (mockGroup) {
-        return mockGroup;
+      // Try to find in mock data (only in development)
+      if (IS_DEV) {
+        const mockGroup = MOCK_STUDY_GROUPS.find(g => g.id === groupId);
+        if (mockGroup) {
+          return mockGroup;
+        }
       }
       throw new Error('Study group not found');
     }
   } catch (error) {
     console.error('Error fetching study group:', error);
-    // Try to find in mock data
-    const mockGroup = MOCK_STUDY_GROUPS.find(g => g.id === groupId);
-    if (mockGroup) {
-      return mockGroup;
+    // Try to find in mock data (only in development)
+    if (IS_DEV) {
+      const mockGroup = MOCK_STUDY_GROUPS.find(g => g.id === groupId);
+      if (mockGroup) {
+        return mockGroup;
+      }
     }
     throw error;
   }

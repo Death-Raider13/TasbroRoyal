@@ -35,6 +35,7 @@ import {
   joinLiveSession
 } from '../services/scheduling';
 import { getStudentAnnouncements } from '../services/messaging';
+import { getUserProgress } from '../services/userProgress';
 
 export default function EnhancedStudentDashboard() {
   const { userData } = useAuthStore();
@@ -122,6 +123,18 @@ export default function EnhancedStudentDashboard() {
       );
       setAnnouncements(announcementsData);
 
+      // Load user progress (watch time, streaks) from Firestore
+      const userProgress = await safeFirestoreOperation(
+        () => getUserProgress(userData.uid),
+        null
+      );
+
+      const totalHoursLearned = userProgress?.totalWatchTimeMinutes
+        ? Math.round(userProgress.totalWatchTimeMinutes / 60)
+        : 0;
+
+      const currentStreak = userProgress?.currentStreak ?? 0;
+
       // Calculate stats
       const completedCount = processedEnrollments.filter(e => e.progress === 100).length;
       const inProgressCount = processedEnrollments.filter(e => e.progress > 0 && e.progress < 100).length;
@@ -134,8 +147,8 @@ export default function EnhancedStudentDashboard() {
         inProgressCourses: inProgressCount,
         upcomingSessions: upcomingSessionsCount,
         unreadMessages: unreadCount,
-        totalHoursLearned: Math.floor(Math.random() * 50) + 20, // Mock data
-        currentStreak: 7 // Mock data
+        totalHoursLearned,
+        currentStreak
       });
 
     } catch (err) {

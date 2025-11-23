@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import useAuthStore from '../../store/authStore';
+import { createReply } from '../../services/answers';
 import {
   HandThumbUpIcon,
   HandThumbDownIcon,
@@ -20,10 +22,13 @@ export default function AnswerCard({
   answer, 
   questionAuthor, 
   currentUser, 
+  questionAuthorId,
+  currentUserId,
   onVote, 
   onAccept,
   depth = 0 
 }) {
+  const { userData } = useAuthStore();
   const [showReplies, setShowReplies] = useState(true);
   const [showReplyEditor, setShowReplyEditor] = useState(false);
   const [replies, setReplies] = useState(answer.replies || []);
@@ -49,22 +54,31 @@ export default function AnswerCard({
   };
 
   const handleReply = async (replyData) => {
-    try {
-      const newReply = {
-        id: Date.now(), // In real app, this would come from backend
-        author: currentUser || 'Anonymous User',
-        authorRole: 'Student', // Would come from user context
-        votes: 0,
-        createdAt: new Date().toISOString(),
-        userVote: null,
-        replies: [],
-        ...replyData
-      };
+    if (!userData?.uid) {
+      alert('You must be logged in to reply.');
+      return;
+    }
 
-      setReplies([...replies, newReply]);
+    try {
+      const newReply = await createReply(
+        answer.questionId,
+        answer.id,
+        replyData,
+        userData.uid,
+        userData
+      );
+
+      setReplies((prev) => [
+        ...prev,
+        {
+          ...newReply,
+          replies: []
+        }
+      ]);
       setShowReplyEditor(false);
     } catch (error) {
       console.error('Error posting reply:', error);
+      alert('Failed to submit reply. Please try again.');
     }
   };
 
@@ -73,19 +87,52 @@ export default function AnswerCard({
     console.log(`Vote ${voteType} on reply ${replyId}`);
   };
 
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const sanitizeUrl = (url) => {
+    if (!url) return '#';
+    const trimmed = url.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (
+      lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('mailto:')
+    ) {
+      return trimmed;
+    }
+
+    return '#';
+  };
+
   const renderContent = (content) => {
-    // Simple markdown-like rendering
-    return content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded text-sm">$1</code>')
-      .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 p-3 rounded overflow-x-auto my-3"><code>$1</code></pre>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 hover:underline">$1</a>')
-      .replace(/^> (.+)/gm, '<blockquote class="border-l-4 border-gray-300 pl-4 italic my-2">$1</blockquote>')
-      .replace(/^- (.+)/gm, '<li class="ml-4">$1</li>')
-      .replace(/^(\d+)\. (.+)/gm, '<li class="ml-4">$1. $2</li>')
-      .replace(/\n\n/g, '</p><p class="mb-3">')
+    // Simple markdown-like rendering with HTML escaping and safe links
+    const escaped = escapeHtml(content || '');
+
+    let html = escaped
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1<\/em>')
+      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded text-sm">$1<\/code>')
+      .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 p-3 rounded overflow-x-auto my-3"><code>$1<\/code><\/pre>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        const safeUrl = sanitizeUrl(url);
+        return `<a href="${safeUrl}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${text}<\/a>`;
+      })
+      .replace(/^> (.+)/gm, '<blockquote class="border-l-4 border-gray-300 pl-4 italic my-2">$1<\/blockquote>')
+      .replace(/^- (.+)/gm, '<li class="ml-4">$1<\/li>')
+      .replace(/^(\d+)\. (.+)/gm, '<li class="ml-4">$1. $2<\/li>')
+      .replace(/\n\n/g, '<\/p><p class="mb-3">')
       .replace(/\n/g, '<br>');
+
+    return html;
   };
 
   const maxDepth = 3; // Limit nesting depth
@@ -133,7 +180,9 @@ export default function AnswerCard({
               </button>
 
               {/* Accept Answer Button (only for question author) */}
-              {currentUser === questionAuthor && depth === 0 && (
+              {((currentUserId && questionAuthorId && currentUserId === questionAuthorId) ||
+                (!questionAuthorId && currentUser === questionAuthor)) &&
+                depth === 0 && (
                 <button
                   onClick={handleAccept}
                   className={`p-2 rounded-lg transition-colors duration-200 ${
@@ -173,13 +222,15 @@ export default function AnswerCard({
               {/* Answer Meta */}
               <div className="flex items-center justify-between text-sm text-gray-600 pt-3 border-t border-gray-200">
                 <div className="flex items-center space-x-4">
-                  <button
-                    onClick={() => setShowReplyEditor(!showReplyEditor)}
-                    className="flex items-center hover:text-blue-600 transition-colors duration-200"
-                  >
-                    <ChatBubbleLeftRightIcon className="w-4 h-4 mr-1" />
-                    Reply
-                  </button>
+                  {depth === 0 && (
+                    <button
+                      onClick={() => setShowReplyEditor(!showReplyEditor)}
+                      className="flex items-center hover:text-blue-600 transition-colors duration-200"
+                    >
+                      <ChatBubbleLeftRightIcon className="w-4 h-4 mr-1" />
+                      Reply
+                    </button>
+                  )}
                   
                   {replies.length > 0 && (
                     <button

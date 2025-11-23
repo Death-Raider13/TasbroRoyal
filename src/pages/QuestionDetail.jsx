@@ -21,6 +21,8 @@ import {
 import useAuthStore from '../store/authStore';
 import AnswerEditor from '../components/questions/AnswerEditor';
 import AnswerCard from '../components/questions/AnswerCard';
+import { getQuestion, voteQuestion, incrementViews } from '../services/questions';
+import { getAnswers, createAnswer, voteAnswer, acceptAnswer, getRepliesForQuestion } from '../services/answers';
 
 export default function QuestionDetail() {
   const { questionId } = useParams();
@@ -29,234 +31,169 @@ export default function QuestionDetail() {
   const [answers, setAnswers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAnswerEditor, setShowAnswerEditor] = useState(false);
-
-  // Mock question data - replace with actual API call
-  const mockQuestion = {
-    id: parseInt(questionId),
-    title: "How to calculate the efficiency of a heat engine in thermodynamics?",
-    content: `I'm struggling with understanding the Carnot cycle and how to calculate the theoretical maximum efficiency. 
-
-Here's what I know so far:
-- The Carnot cycle is a theoretical thermodynamic cycle
-- It operates between two heat reservoirs
-- It's supposed to be the most efficient heat engine possible
-
-My specific questions:
-1. What is the formula for Carnot efficiency?
-2. How do I apply it to real-world problems?
-3. Why is it considered the theoretical maximum?
-
-I've tried looking this up in my textbook, but the explanations are quite complex. Can someone break it down in simpler terms with a practical example?
-
-Any help would be greatly appreciated!`,
-    author: "Adebayo Ogundimu",
-    authorRole: "Student",
-    category: "Mechanical Engineering",
-    tags: ["Thermodynamics", "Heat Engine", "Carnot Cycle", "Efficiency"],
-    votes: 24,
-    views: 156,
-    createdAt: "2024-01-15T10:30:00Z",
-    isAnswered: true,
-    acceptedAnswerId: 2,
-    userVote: null // 'up', 'down', or null
-  };
-
-  const mockAnswers = [
-    {
-      id: 1,
-      content: `Great question! Let me break down the Carnot efficiency for you.
-
-**The Carnot Efficiency Formula:**
-η = 1 - (T_cold / T_hot)
-
-Where:
-- η (eta) = efficiency (as a decimal)
-- T_cold = temperature of the cold reservoir (in Kelvin)
-- T_hot = temperature of the hot reservoir (in Kelvin)
-
-**Key Points:**
-1. **Always use Kelvin** - This is crucial! Convert Celsius by adding 273.15
-2. **It's a ratio** - The efficiency tells you what fraction of heat input becomes useful work
-3. **Always less than 1** - No real engine can be 100% efficient
-
-**Example:**
-If you have a heat engine operating between:
-- Hot reservoir: 500°C = 773.15 K
-- Cold reservoir: 25°C = 298.15 K
-
-η = 1 - (298.15/773.15) = 1 - 0.386 = 0.614 = 61.4%
-
-This means theoretically, this engine could convert 61.4% of the input heat into useful work.`,
-      author: "Dr. Kemi Adebisi",
-      authorRole: "Lecturer",
-      votes: 18,
-      createdAt: "2024-01-15T14:20:00Z",
-      isAccepted: false,
-      userVote: null,
-      replies: [
-        {
-          id: 11,
-          content: "This is a great explanation! Just to add - the reason we use Kelvin is because it's an absolute temperature scale. Using Celsius or Fahrenheit would give incorrect results.",
-          author: "Fatima Abdullahi",
-          authorRole: "Graduate Student",
-          votes: 5,
-          createdAt: "2024-01-15T15:30:00Z",
-          userVote: null,
-          replies: [
-            {
-              id: 111,
-              content: "Exactly! And that's why the Carnot efficiency can never reach 100% - you'd need the cold reservoir to be at absolute zero (0 K), which is impossible to achieve.",
-              author: "Prof. Chinedu Okwu",
-              authorRole: "Professor",
-              votes: 8,
-              createdAt: "2024-01-15T16:45:00Z",
-              userVote: null,
-              replies: []
-            }
-          ]
-        }
-      ]
-    },
-    {
-      id: 2,
-      content: `Building on the previous answer, let me give you a **practical perspective** as someone who works in power plant design.
-
-**Why Carnot Efficiency Matters:**
-
-1. **Theoretical Limit**: It tells us the absolute best we can do. Real engines are always less efficient.
-
-2. **Design Guidance**: Engineers use it to evaluate how close their designs are to the theoretical maximum.
-
-3. **Economic Impact**: Even small efficiency improvements can save millions in fuel costs.
-
-**Real-World Example - Coal Power Plant:**
-- Steam temperature: 600°C (873 K)  
-- Cooling water: 30°C (303 K)
-- Carnot efficiency: 1 - (303/873) = 65.3%
-- Actual efficiency: ~40% (due to real-world losses)
-
-**The Gap Explained:**
-The difference between Carnot (65.3%) and actual (40%) efficiency comes from:
-- Friction in turbines
-- Heat losses in pipes
-- Incomplete combustion
-- Pressure drops
-
-**Pro Tip**: When solving problems, always calculate the Carnot efficiency first - it gives you the theoretical ceiling for any heat engine operating between those temperatures.
-
-Hope this helps with your studies! 🔥`,
-      author: "Eng. Amina Hassan",
-      authorRole: "Industry Expert",
-      votes: 32,
-      createdAt: "2024-01-15T16:10:00Z",
-      isAccepted: true,
-      userVote: 'up',
-      replies: [
-        {
-          id: 21,
-          content: "This is incredibly helpful! I never understood why real engines are so much less efficient than the Carnot limit. The breakdown of losses makes it clear.",
-          author: "Adebayo Ogundimu",
-          authorRole: "Student",
-          votes: 3,
-          createdAt: "2024-01-15T17:00:00Z",
-          userVote: null,
-          replies: []
-        }
-      ]
-    },
-    {
-      id: 3,
-      content: `I'd like to add a **mathematical perspective** that might help with problem-solving:
-
-**Step-by-Step Problem Approach:**
-
-1. **Identify the temperatures** (always convert to Kelvin!)
-2. **Apply the formula**: η = 1 - (T_c/T_h)
-3. **Calculate work output**: W = η × Q_h (where Q_h is heat input)
-4. **Find heat rejected**: Q_c = Q_h - W
-
-**Memory Aids:**
-- "**Hot on top, cold on bottom**" - T_cold/T_hot in the formula
-- "**Kelvin is key**" - always use absolute temperature
-- "**Bigger gap, better efficiency**" - larger temperature difference = higher efficiency
-
-**Common Mistakes to Avoid:**
-❌ Using Celsius instead of Kelvin
-❌ Mixing up T_hot and T_cold in the formula  
-❌ Forgetting that efficiency is always < 1
-
-**Practice Problem:**
-A Carnot engine operates between 400 K and 300 K. If it receives 1000 J of heat, find:
-a) Efficiency
-b) Work output  
-c) Heat rejected
-
-Try solving this and I'll check your work! 📚`,
-      author: "Teaching Assistant Sarah",
-      authorRole: "TA",
-      votes: 12,
-      createdAt: "2024-01-15T18:30:00Z",
-      isAccepted: false,
-      userVote: null,
-      replies: []
-    }
-  ];
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setQuestion(mockQuestion);
-      setAnswers(mockAnswers);
-      setLoading(false);
-    }, 1000);
+    let isMounted = true;
+
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [fetchedQuestion, fetchedAnswers, fetchedReplies] = await Promise.all([
+          getQuestion(questionId),
+          getAnswers(questionId),
+          getRepliesForQuestion(questionId)
+        ]);
+
+        if (!isMounted) return;
+
+        setQuestion(fetchedQuestion);
+
+        // Attach replies to their parent answers (single level: replies to top-level answers)
+        const repliesByParent = (fetchedReplies || []).reduce((acc, reply) => {
+          if (!reply.parentId) return acc;
+          if (!acc[reply.parentId]) acc[reply.parentId] = [];
+          acc[reply.parentId].push({
+            ...reply,
+            replies: []
+          });
+          return acc;
+        }, {});
+
+        const answersWithReplies = (fetchedAnswers || []).map((ans) => ({
+          ...ans,
+          replies: repliesByParent[ans.id] || []
+        }));
+
+        setAnswers(answersWithReplies);
+
+        // Increment views in the background (no need to await)
+        incrementViews(questionId).catch((viewError) => {
+          console.error('Error incrementing views:', viewError);
+        });
+      } catch (err) {
+        console.error('Error loading question detail:', err);
+        if (!isMounted) return;
+        setError(err.message || 'Failed to load question');
+        setQuestion(null);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [questionId]);
 
-  const handleVoteQuestion = (voteType) => {
-    // Implement question voting logic
-    console.log(`Vote ${voteType} on question ${questionId}`);
+  const handleVoteQuestion = async (voteType) => {
+    if (!userData?.uid || !question) return;
+
+    try {
+      const result = await voteQuestion(question.id, userData.uid, voteType);
+
+      setQuestion((prev) =>
+        prev
+          ? {
+              ...prev,
+              votes: (prev.votes || 0) + (result.voteChange || 0),
+              userVote: result.userVote
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error('Error voting on question:', err);
+    }
   };
 
   const handleSubmitAnswer = async (answerData) => {
+    if (!userData?.uid || !question) return;
+
     try {
-      const newAnswer = {
-        id: answers.length + 1,
-        author: userData?.displayName || 'Anonymous User',
-        authorRole: userData?.role || 'Student',
-        votes: 0,
-        createdAt: new Date().toISOString(),
-        isAccepted: false,
-        userVote: null,
-        replies: [],
-        ...answerData
-      };
+      const newAnswer = await createAnswer(question.id, answerData, userData.uid, userData);
 
-      setAnswers([...answers, newAnswer]);
-      setShowAnswerEditor(false);
-      
-      // Update question answer count
-      setQuestion(prev => ({
+      setAnswers((prev) => [
         ...prev,
-        answers: (prev.answers || 0) + 1
-      }));
+        {
+          ...newAnswer,
+          replies: []
+        }
+      ]);
 
+      setShowAnswerEditor(false);
+
+      setQuestion((prev) =>
+        prev
+          ? {
+              ...prev,
+              answers: (prev.answers || 0) + 1,
+              isAnswered: true
+            }
+          : prev
+      );
     } catch (error) {
       console.error('Error submitting answer:', error);
     }
   };
 
-  const handleVoteAnswer = (answerId, voteType) => {
-    // Implement answer voting logic
-    console.log(`Vote ${voteType} on answer ${answerId}`);
+  const handleVoteAnswer = async (answerId, voteType) => {
+    if (!userData?.uid) return;
+
+    try {
+      const result = await voteAnswer(answerId, userData.uid, voteType);
+
+      setAnswers((prev) =>
+        prev.map((answer) =>
+          answer.id === answerId
+            ? {
+                ...answer,
+                votes: (answer.votes || 0) + (result.voteChange || 0),
+                userVote: result.userVote
+              }
+            : answer
+        )
+      );
+    } catch (err) {
+      console.error('Error voting on answer:', err);
+    }
   };
 
-  const handleAcceptAnswer = (answerId) => {
-    // Only question author can accept answers
-    if (userData?.displayName === question.author) {
-      setQuestion(prev => ({ ...prev, acceptedAnswerId: answerId }));
-      setAnswers(prev => prev.map(answer => ({
-        ...answer,
-        isAccepted: answer.id === answerId
-      })));
+  const handleAcceptAnswer = async (answerId) => {
+    if (!userData?.uid || !question) return;
+
+    // UI-level check: only question author can accept answers
+    if (question.authorId && userData.uid !== question.authorId) {
+      return;
+    }
+
+    try {
+      await acceptAnswer(answerId, question.id, userData.uid);
+
+      setQuestion((prev) =>
+        prev
+          ? {
+              ...prev,
+              acceptedAnswerId: answerId,
+              isAnswered: true
+            }
+          : prev
+      );
+
+      setAnswers((prev) =>
+        prev.map((answer) => ({
+          ...answer,
+          isAccepted: answer.id === answerId
+        }))
+      );
+    } catch (err) {
+      console.error('Error accepting answer:', err);
+      alert('You are not allowed to change the accepted answer for this question. Only the question author can do that.');
     }
   };
 
@@ -288,6 +225,9 @@ Try solving this and I'll check your work! 📚`,
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Question Not Found</h2>
+          {error && (
+            <p className="text-gray-600 mb-2">{error}</p>
+          )}
           <Link to="/questions" className="btn-primary">
             Back to Questions
           </Link>
@@ -330,7 +270,7 @@ Try solving this and I'll check your work! 📚`,
                 </button>
                 
                 <span className="font-bold text-2xl text-gray-900">
-                  {question.votes}
+                  {Math.max(question.votes || 0, 0)}
                 </span>
                 
                 <button
@@ -458,6 +398,8 @@ Try solving this and I'll check your work! 📚`,
                   answer={answer}
                   questionAuthor={question.author}
                   currentUser={userData?.displayName}
+                  questionAuthorId={question.authorId}
+                  currentUserId={userData?.uid}
                   onVote={handleVoteAnswer}
                   onAccept={handleAcceptAnswer}
                 />

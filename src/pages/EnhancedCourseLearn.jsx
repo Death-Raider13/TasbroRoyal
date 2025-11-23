@@ -35,6 +35,7 @@ import {
   updateEnrollmentProgress, 
   getEnrollmentByUserAndCourse 
 } from '../services/firestore';
+import { addWatchTimeMinutes, recordLearningActivity } from '../services/userProgress';
 import { useToast } from '../components/ui/Toast';
 
 export default function EnhancedCourseLearn() {
@@ -204,7 +205,17 @@ export default function EnhancedCourseLearn() {
   const handleVideoTimeUpdate = () => {
     if (videoRef.current) {
       setWatchTime(videoRef.current.currentTime);
-      setTotalWatchTime(prev => prev + 1);
+      setTotalWatchTime(prev => {
+        const updated = prev + 1;
+
+        // Every 60 seconds of watch time, sync 1 minute to Firestore and record activity
+        if (userData?.uid && updated % 60 === 0) {
+          addWatchTimeMinutes(userData.uid, 1);
+          recordLearningActivity(userData.uid);
+        }
+
+        return updated;
+      });
     }
   };
 

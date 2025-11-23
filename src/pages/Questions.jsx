@@ -304,7 +304,7 @@ export default function Questions() {
                       </button>
                       
                       <span className="font-bold text-lg text-gray-900">
-                        {question.votes}
+                        {Math.max(question.votes || 0, 0)}
                       </span>
                       
                       <button

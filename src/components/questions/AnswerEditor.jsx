@@ -29,11 +29,6 @@ export default function AnswerEditor({ onSubmit, onCancel, initialContent = '' }
   const watchedContent = watch('content', '');
 
   const onSubmitForm = async (data) => {
-    if (data.content.trim().length < 20) {
-      alert('Please provide a more detailed answer (at least 20 characters).');
-      return;
-    }
-
     setIsSubmitting(true);
     
     try {
@@ -93,17 +88,48 @@ export default function AnswerEditor({ onSubmit, onCancel, initialContent = '' }
     }
   };
 
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const sanitizeUrl = (url) => {
+    if (!url) return '#';
+    const trimmed = url.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (
+      lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('mailto:')
+    ) {
+      return trimmed;
+    }
+
+    return '#';
+  };
+
   const renderPreview = (content) => {
-    // Simple markdown-like preview (in a real app, use a proper markdown parser)
-    return content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded">$1</code>')
-      .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 p-3 rounded overflow-x-auto"><code>$1</code></pre>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 hover:underline">$1</a>')
-      .replace(/^> (.+)/gm, '<blockquote class="border-l-4 border-gray-300 pl-4 italic">$1</blockquote>')
-      .replace(/^- (.+)/gm, '<li>$1</li>')
-      .replace(/^(\d+)\. (.+)/gm, '<li>$1. $2</li>')
+    // Simple markdown-like preview with HTML escaping and safe links
+    const escaped = escapeHtml(content || '');
+
+    return escaped
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1<\/em>')
+      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded">$1<\/code>')
+      .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 p-3 rounded overflow-x-auto"><code>$1<\/code><\/pre>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        const safeUrl = sanitizeUrl(url);
+        return `<a href="${safeUrl}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${text}<\/a>`;
+      })
+      .replace(/^> (.+)/gm, '<blockquote class="border-l-4 border-gray-300 pl-4 italic">$1<\/blockquote>')
+      .replace(/^- (.+)/gm, '<li>$1<\/li>')
+      .replace(/^(\d+)\. (.+)/gm, '<li>$1. $2<\/li>')
       .replace(/\n/g, '<br>');
   };
 
@@ -292,7 +318,7 @@ Be detailed and helpful in your explanation!"
             <button
               type="submit"
               className="btn-primary flex-1"
-              disabled={isSubmitting || watchedContent.trim().length < 20}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <div className="flex items-center justify-center">

@@ -16,6 +16,7 @@ import { db } from './firebase';
 
 const ANSWERS_COLLECTION = 'answers';
 const QUESTIONS_COLLECTION = 'questions';
+const REPLIES_COLLECTION = 'replies';
 
 // Create a new answer
 export const createAnswer = async (questionId, answerData, userId, userProfile) => {
@@ -33,16 +34,21 @@ export const createAnswer = async (questionId, answerData, userId, userProfile) 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
-
     const answerRef = await addDoc(collection(db, ANSWERS_COLLECTION), answerDocData);
     
-    // Update question's answer count and status
-    const questionRef = doc(db, QUESTIONS_COLLECTION, questionId);
-    await updateDoc(questionRef, {
-      answers: increment(1),
-      isAnswered: true,
-      updatedAt: serverTimestamp()
-    });
+    // Update question's answer count and status.
+    // If this fails due to stricter Firestore rules, we still keep the answer.
+    try {
+      const questionRef = doc(db, QUESTIONS_COLLECTION, questionId);
+      await updateDoc(questionRef, {
+        answers: increment(1),
+        isAnswered: true,
+        updatedAt: serverTimestamp()
+      });
+    } catch (updateError) {
+      console.error('Error updating question after creating answer:', updateError);
+      // Do not rethrow here; the answer itself was created successfully.
+    }
 
     return {
       id: answerRef.id,
@@ -53,6 +59,65 @@ export const createAnswer = async (questionId, answerData, userId, userProfile) 
   } catch (error) {
     console.error('Error creating answer:', error);
     throw new Error('Failed to create answer. Please try again.');
+  }
+};
+
+// Create a reply to an answer or another reply
+export const createReply = async (questionId, parentId, replyData, userId, userProfile) => {
+  try {
+    const replyDocData = {
+      questionId,
+      parentId,
+      content: replyData.content,
+      authorId: userId,
+      author: userProfile?.displayName || 'Anonymous User',
+      authorRole: userProfile?.role || 'Student',
+      votes: 0,
+      userVote: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    const replyRef = await addDoc(collection(db, REPLIES_COLLECTION), replyDocData);
+
+    return {
+      id: replyRef.id,
+      ...replyDocData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  } catch (error) {
+    console.error('Error creating reply:', error);
+    throw new Error('Failed to create reply. Please try again.');
+  }
+};
+
+// Get all replies for a question, grouped client-side by parentId
+export const getRepliesForQuestion = async (questionId) => {
+  try {
+    const q = query(
+      collection(db, REPLIES_COLLECTION),
+      where('questionId', '==', questionId),
+      orderBy('createdAt', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const replies = [];
+
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      replies.push({
+        id: docSnap.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date()
+      });
+    });
+
+    return replies;
+  } catch (error) {
+    console.error('Error fetching replies:', error);
+    return [];
   }
 };
 

@@ -30,6 +30,7 @@ import { getEnrollments, getCourse } from '../services/firestore';
 import { getStudentLiveSessionHistory } from '../services/scheduling';
 import { useToast } from '../components/ui/Toast';
 import { safeFirestoreOperation } from '../utils/firebaseHelper';
+import { getUserProgress } from '../services/userProgress';
 
 export default function StudentAnalytics() {
   const { userData } = useAuthStore();
@@ -76,13 +77,27 @@ export default function StudentAnalytics() {
         []
       );
       setLiveSessionHistory(sessionHistory);
+
+      // Load user progress (watch time, streaks) from Firestore
+      const userProgress = await safeFirestoreOperation(
+        () => getUserProgress(userData.uid),
+        null
+      );
       
       // Calculate analytics
       const calculatedAnalytics = calculateAnalytics(studentEnrollments, courseData, sessionHistory);
-      setAnalytics(calculatedAnalytics);
+
+      const mergedAnalytics = {
+        ...calculatedAnalytics,
+        totalWatchTime: userProgress?.totalWatchTimeMinutes ?? calculatedAnalytics.totalWatchTime,
+        currentStreak: userProgress?.currentStreak ?? calculatedAnalytics.currentStreak,
+        longestStreak: userProgress?.longestStreak ?? calculatedAnalytics.longestStreak
+      };
+
+      setAnalytics(mergedAnalytics);
       
-      // Calculate achievements
-      const studentAchievements = calculateAchievements(calculatedAnalytics, studentEnrollments);
+      // Calculate achievements using merged analytics
+      const studentAchievements = calculateAchievements(mergedAnalytics, studentEnrollments);
       setAchievements(studentAchievements);
       
     } catch (err) {

@@ -19,11 +19,6 @@ export default function ReplyEditor({ onSubmit, onCancel, placeholder = 'Write y
   const watchedContent = watch('content', '');
 
   const onSubmitForm = async (data) => {
-    if (data.content.trim().length < 5) {
-      alert('Please provide a more detailed reply (at least 5 characters).');
-      return;
-    }
-
     setIsSubmitting(true);
     
     try {
@@ -45,8 +40,8 @@ export default function ReplyEditor({ onSubmit, onCancel, placeholder = 'Write y
             {...register('content', { 
               required: 'Please provide a reply',
               minLength: {
-                value: 5,
-                message: 'Reply must be at least 5 characters long'
+                value: 20,
+                message: 'Reply must be at least 20 characters long'
               },
               maxLength: {
                 value: 1000,
@@ -79,7 +74,7 @@ export default function ReplyEditor({ onSubmit, onCancel, placeholder = 'Write y
           <button
             type="submit"
             className="btn-primary text-sm px-3 py-1"
-            disabled={isSubmitting || watchedContent.trim().length < 5}
+            disabled={isSubmitting}
           >
             {isSubmitting ? (
               <div className="flex items-center">

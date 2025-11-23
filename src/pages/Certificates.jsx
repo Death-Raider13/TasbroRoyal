@@ -15,6 +15,8 @@ export default function Certificates() {
   const { userData } = useAuthStore();
   const [certificates, setCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedCertificate, setSelectedCertificate] = useState(null);
+  const [showPrintView, setShowPrintView] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -61,8 +63,17 @@ export default function Certificates() {
 
   const handleDownload = (certificate) => {
     // TODO: Implement actual certificate PDF generation
-    showToast('Certificate download will be available soon!', 'info');
-    console.log('Downloading certificate:', certificate);
+    setSelectedCertificate(certificate);
+    setShowPrintView(true);
+
+    setTimeout(() => {
+      try {
+        window.print();
+      } finally {
+        setShowPrintView(false);
+        setSelectedCertificate(null);
+      }
+    }, 300);
   };
 
   const handleShare = (certificate) => {
@@ -93,6 +104,79 @@ export default function Certificates() {
       day: 'numeric' 
     });
   };
+
+  if (showPrintView && selectedCertificate) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center py-10 px-4">
+        <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl border border-blue-100 p-10">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <div className="text-xs font-semibold tracking-widest text-blue-500 uppercase">NaijaEdu</div>
+              <div className="text-sm text-gray-500">Engineering Learning Platform</div>
+            </div>
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-green-600">
+              <AcademicCapIcon className="w-8 h-8 text-white" />
+            </div>
+          </div>
+
+          <div className="text-center mb-8">
+            <p className="text-xs font-semibold tracking-[0.3em] text-gray-400 uppercase mb-3">Certificate of Completion</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">This certifies that</h1>
+            <p className="text-2xl font-semibold text-blue-700 mb-4">
+              {userData?.displayName || 'Valued Learner'}
+            </p>
+            <p className="text-sm text-gray-600 max-w-xl mx-auto">
+              has successfully completed the course
+            </p>
+            <p className="text-xl font-semibold text-gray-900 mt-2 mb-3">
+              {selectedCertificate.courseName}
+            </p>
+            <p className="text-sm text-gray-500">
+              instructed by <span className="font-medium">{selectedCertificate.instructor}</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 text-sm text-gray-600">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Certificate ID</div>
+              <div className="font-mono text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1">
+                {selectedCertificate.certificateId}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Category</div>
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                {selectedCertificate.category}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Completion Date</div>
+              <div className="flex items-center text-sm">
+                <CalendarIcon className="w-4 h-4 mr-1 text-gray-400" />
+                {formatDate(selectedCertificate.completedDate)}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-dashed border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                <CheckBadgeIcon className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">NaijaEdu Certification</div>
+                <div className="text-xs text-gray-500">Digitally signed and verifiable</div>
+              </div>
+            </div>
+            <div className="text-right text-xs text-gray-400">
+              <div>Verify at naijaedu.com/verify</div>
+              <div>Use certificate ID for verification</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

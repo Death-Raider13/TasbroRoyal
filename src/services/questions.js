@@ -15,6 +15,7 @@ import {
 import { db } from './firebase';
 
 const COLLECTION_NAME = 'questions';
+const IS_DEV = import.meta.env.DEV;
 
 // Mock data as fallback
 const MOCK_QUESTIONS = [
@@ -144,15 +145,21 @@ export const getQuestions = async (filters = {}) => {
 
     // If no questions found, return mock data as fallback
     if (questions.length === 0) {
-      console.log('No questions found in Firebase, using mock data');
-      return MOCK_QUESTIONS;
+      if (IS_DEV) {
+        console.log('No questions found in Firebase, using mock data (development only)');
+        return MOCK_QUESTIONS;
+      }
+      return [];
     }
 
     return questions;
   } catch (error) {
     console.error('Error fetching questions:', error);
-    console.log('Using mock data as fallback');
-    return MOCK_QUESTIONS;
+    if (IS_DEV) {
+      console.log('Using mock data as fallback (development only)');
+      return MOCK_QUESTIONS;
+    }
+    throw new Error('Failed to fetch questions. Please try again later.');
   }
 };
 
@@ -172,18 +179,22 @@ export const getQuestion = async (questionId) => {
       };
     } else {
       // Try to find in mock data
-      const mockQuestion = MOCK_QUESTIONS.find(q => q.id === questionId);
-      if (mockQuestion) {
-        return mockQuestion;
+      if (IS_DEV) {
+        const mockQuestion = MOCK_QUESTIONS.find(q => q.id === questionId);
+        if (mockQuestion) {
+          return mockQuestion;
+        }
       }
       throw new Error('Question not found');
     }
   } catch (error) {
     console.error('Error fetching question:', error);
     // Try to find in mock data
-    const mockQuestion = MOCK_QUESTIONS.find(q => q.id === questionId);
-    if (mockQuestion) {
-      return mockQuestion;
+    if (IS_DEV) {
+      const mockQuestion = MOCK_QUESTIONS.find(q => q.id === questionId);
+      if (mockQuestion) {
+        return mockQuestion;
+      }
     }
     throw error;
   }

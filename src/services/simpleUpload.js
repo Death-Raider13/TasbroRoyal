@@ -1,6 +1,23 @@
 // Simple, working upload service for course thumbnails
 // This uses a basic approach that should work immediately
 
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB limit for thumbnails
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+const validateImageFile = (file) => {
+  if (!file) {
+    throw new Error('No file provided for upload');
+  }
+
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    throw new Error('Only JPEG, PNG, or WEBP image files are allowed');
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error('Image is too large. Maximum size is 5MB');
+  }
+};
+
 // Convert file to base64 for simple storage
 const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
@@ -142,7 +159,10 @@ export const uploadToLocalStorage = async (file, onProgress) => {
 // Main upload function with fallbacks
 export const uploadWithFallbacks = async (file, onProgress) => {
   console.log('🚀 Starting upload for:', file.name);
-  
+
+  // Basic validation to ensure only reasonable image files are uploaded
+  validateImageFile(file);
+
   // Try Cloudinary with default preset first
   try {
     console.log('☁️ Trying Cloudinary with default preset...');
@@ -163,16 +183,21 @@ export const uploadWithFallbacks = async (file, onProgress) => {
     console.log('❌ ImageKit failed:', error.message);
   }
   
-  // Fallback to local storage
+  // Fallback to local storage (development only)
   try {
-    console.log('💾 Falling back to local storage...');
-    const result = await uploadToLocalStorage(file, onProgress);
-    console.log('✅ Local storage fallback successful!');
-    return result;
+    if (import.meta.env.DEV) {
+      console.log('💾 Falling back to local storage (development)...');
+      const result = await uploadToLocalStorage(file, onProgress);
+      console.log('✅ Local storage fallback successful!');
+      return result;
+    }
+
+    console.error('❌ Upload failed in production environment with no available services.');
   } catch (error) {
     console.error('❌ All upload methods failed:', error);
-    throw new Error('All upload services failed. Please try again.');
   }
+
+  throw new Error('All upload services failed. Please try again later.');
 };
 
 export default {
